@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    @apply antialiased;
+  html, body, #root {
+    @apply h-full w-full m-0 p-0 overflow-x-hidden;
   }
   
   body {
-    @apply bg-gray-50 text-gray-900 min-h-screen;
+    @apply bg-gray-50 text-gray-900;
   }
 }
 
@@ -24,6 +24,13 @@
   .btn-primary {
     @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
   }
+}
+
+/* Remove default styles that might interfere with layout */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 :root {

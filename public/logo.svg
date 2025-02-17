@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 10h-6v20h6c5.523 0 10-4.477 10-10s-4.477-10-10-10z" fill="#3B82F6"/>
+  <path d="M10 10H4c-1.105 0-2 .895-2 2v16c0 1.105.895 2 2 2h6V10z" fill="#60A5FA"/>
+  <text x="40" y="25" font-family="Arial" font-size="16" font-weight="bold" fill="#1F2937">
+    TL;DV
+  </text>
+</svg> 
