@@ -1,47 +1,76 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react'
+import { useMeetings } from './MeetingsContext'
 
-interface ActiveUpload {
-  id: string
-  file: File
-  progress: number
-  status: 'uploading' | 'processing' | 'completed' | 'error'
-  createdAt: string
-}
-
-interface UploadedFile {
-  name: string
-  createdAt: string
-  fileType: string
-  status: 'Subido' | 'En progreso' | 'Cancelado'
-  size: number
-  type: string
+interface Upload {
+  id: string;
+  name: string;
+  type: 'clip' | 'file';
+  status: 'uploading' | 'processing' | 'completed' | 'error';
+  progress: number;
+  url?: string;
+  metadata?: {
+    duration?: number;
+  };
 }
 
 interface UploadContextType {
-  uploadedFiles: UploadedFile[]
-  setUploadedFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>
-  activeUploads: ActiveUpload[]
-  setActiveUploads: React.Dispatch<React.SetStateAction<ActiveUpload[]>>
+  uploads: Upload[];
+  addUpload: (upload: Upload) => void;
+  updateUpload: (id: string, updates: Partial<Upload>) => void;
+  removeUpload: (id: string) => void;
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined)
 
 export function UploadProvider({ children }: { children: ReactNode }) {
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
-  const [activeUploads, setActiveUploads] = useState<ActiveUpload[]>([])
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const { addMeeting, updateMeeting } = useMeetings();
+
+  const addUpload = (upload: Upload) => {
+    setUploads(prev => [...prev, upload]);
+  };
+
+  const updateUpload = (id: string, updates: Partial<Upload>) => {
+    setUploads(prev => 
+      prev.map(upload => 
+        upload.id === id ? { ...upload, ...updates } : upload
+      )
+    );
+  };
+
+  const removeUpload = (id: string) => {
+    setUploads(prev => prev.filter(upload => upload.id !== id));
+  };
+
+  const handleFileUpload = async (file: File) => {
+    const uploadId = crypto.randomUUID();
+    // ... resto del código ...
+  };
+
+  const updateProgress = (uploadId: string, progress: number) => {
+    // ... código existente ...
+    if (progress === 100) {
+      updateMeeting(uploadId, {
+        status: {
+          isProcessing: false,
+          isFinished: true,
+          hasTranscription: true,
+          hasSummary: true
+        }
+      });
+    }
+  };
 
   return (
-    <UploadContext.Provider
-      value={{
-        uploadedFiles,
-        setUploadedFiles,
-        activeUploads,
-        setActiveUploads,
-      }}
-    >
+    <UploadContext.Provider value={{ 
+      uploads, 
+      addUpload, 
+      updateUpload, 
+      removeUpload
+    }}>
       {children}
     </UploadContext.Provider>
-  )
+  );
 }
 
 export function useUpload() {
