@@ -1,0 +1,70 @@
+📌 Resumen Técnico y de Experiencia de Usuario de la App
+🚀 Visión General
+Esta aplicación es una base de conocimiento inteligente que captura, organiza y recupera información de múltiples fuentes mediante un chat interactivo con IA.
+
+El sistema permite consultar información en tiempo real desde reuniones, documentos, bases de datos y otros registros empresariales, funcionando como un "cerebro digital" para el usuario.
+
+1️⃣ Estructura y Experiencia de Usuario (UX/UI)
+📌 "Mi Espacio" – Hub Centralizado
+
+Al ingresar a la app, el usuario accede a "Mi Espacio", donde organiza su información en carpetas (Ejemplo: Proyectos, Departamentos, Clientes).
+Puede subir documentos (PDFs, audios, clips) o importar información de herramientas externas.
+Existe una sección de "Reuniones sin clasificar", donde van las reuniones capturadas hasta que se asignan a una carpeta.
+📌 El Chat como Punto de Entrada
+
+Un chat flotante siempre visible permite a los usuarios consultar información en cualquier momento.
+Búsqueda Autónoma: El usuario hace preguntas sin especificar la fuente, y el sistema recupera la información desde la mejor fuente posible.
+Menciones @ y # para refinar búsquedas (Ejemplo: "@Ventas #Airtable Muéstrame los ingresos de enero").
+Interacciones Accionables: El chat no solo responde, sino que permite abrir documentos, ver resúmenes y generar tareas desde la conversación.
+📌 Captura y Organización de Información
+
+Fuentes de Información en el MVP:
+✅ Reuniones en Google Meet, Microsoft Teams, Zoom.
+✅ Archivos PDF, clips de audio y video subidos manualmente.
+✅ Datos de Google Sheets y Airtable.
+Automatización Inteligente: El sistema clasifica información según contenido, participantes y metadatos.
+2️⃣ Funcionamiento Técnico
+📌 Procesamiento de Reuniones
+🔹 Integración con Zoom, Meet y Teams → Captura reuniones automáticamente.
+🔹 Transcripción Automática (Whisper/Deepgram) → Genera un texto preciso.
+🔹 Resumen con IA (GPT-4/DeepSeek/Llama 3) → Extrae tareas, acuerdos y puntos clave.
+🔹 Indexación en Base de Datos Vectorial (PGVector/ChromaDB) → Permite búsquedas semánticas.
+
+📌 Sistema de Recuperación de Información (RAG – Retrieval-Augmented Generation)
+🔹 Cuando el usuario pregunta algo, el sistema busca en todas las fuentes disponibles simultáneamente.
+🔹 Priorización Inteligente:
+
+Si se requiere números → Busca en Airtable/Sheets.
+Si es una conversación pasada → Busca en reuniones transcritas.
+Si es información referencial → Consulta PDFs y documentos subidos.
+🔹 El modelo fusiona información de varias fuentes para generar una respuesta contextual.
+📌 Búsqueda Conversacional con Menciones (@ y #)
+🔹 @Ventas → Especifica una carpeta.
+🔹 #PDFs → Filtra por tipo de documento.
+🔹 "¿Qué acuerdos tomamos en la reunión con Cliente X?" → Extrae información relevante de transcripciones.
+
+📌 Acciones Desde el Chat
+✅ Abrir documentos y reuniones relacionadas.
+✅ Ver resúmenes generados automáticamente.
+✅ Extraer y crear tareas en ClickUp, Asana, Notion (próximamente).
+
+3️⃣ Modelo de Negocio y Escalabilidad
+📌 Planes de Suscripción SaaS
+💰 Básico ($29/mes): Uso individual con límite de almacenamiento.
+💰 Empresarial ($99/mes): Más integraciones y almacenamiento.
+💰 On-Premise: Despliegue en servidores privados para grandes empresas.
+
+📌 Pago por Uso (API)
+
+Empresas pueden integrar el sistema y pagar por cada hora de audio procesada.
+📌 Expansión a Futuro
+🚀 Integración con más herramientas (Notion, Salesforce, Trello).
+🚀 Soporte para bases de datos empresariales (BigQuery, SQL).
+🚀 Creación automática de reportes personalizados e insights predictivos.
+
+🎯 Resumen Final
+✅ Base de Conocimiento Centralizada con IA.
+✅ Chat Interactivo Inteligente como interfaz principal.
+✅ Búsqueda Autónoma en Múltiples Fuentes (Meet, Sheets, PDFs, Airtable, etc.).
+✅ Automatización y Accionabilidad desde el Chat.
+✅ Modelo SaaS con escalabilidad y opciones empresariales.

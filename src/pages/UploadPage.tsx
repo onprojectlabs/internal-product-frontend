@@ -1,6 +1,11 @@
 import { FileUpload } from '../components/FileUpload'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 import { useUpload } from '../context/UploadContext'
+import { useMeetings } from '../context/MeetingsContext'
+import type { Meeting } from '../context/MeetingsContext'
+
+// Definir los posibles estados como tipo
+type FileStatus = 'Subiendo' | 'Transcribiendo' | 'Transcrito' | 'Cancelado';
 
 function formatDate(date: Date): string {
   return date.toLocaleString('es-ES', {
@@ -27,156 +32,170 @@ function getFileType(file: File): string {
 }
 
 export function UploadPage() {
-  const { uploadedFiles, setUploadedFiles, setActiveUploads } = useUpload()
+  const { setActiveUploads } = useUpload()
+  const { addMeeting, meetings, removeMeeting, updateMeeting } = useMeetings()
 
-  const handleFileSelect = (file: File) => {
-    const fileType = getFileType(file)
-    const uploadId = Math.random().toString(36).substr(2, 9)
+  // Obtener los clips del contexto de reuniones
+  const clipMeetings = meetings.filter(m => m.source === 'Clip')
+  
+  // Convertir las reuniones a formato de archivo subido
+  const files = clipMeetings.map(meeting => ({
+    name: meeting.title,
+    createdAt: formatDate(meeting.date),
+    fileType: 'video',
+    status: meeting.status.isUploading 
+        ? 'Subiendo'
+        : meeting.status.isProcessing 
+            ? 'Transcribiendo' 
+            : meeting.status.hasTranscription
+                ? 'Transcrito'
+                : 'Cancelado',
+    size: 0,
+    type: 'video/mp4',
+    id: meeting.id
+  }))
+
+  const handleFileSelect = async (file: File) => {
+    const uploadId = crypto.randomUUID();
     
-    // Create a map to store intervals
-    const intervals = new Map()
-
+    // Crear el upload activo para mostrar el progreso de subida
     const newUpload = {
-      id: uploadId,
-      file,
-      progress: 0,
-      status: 'uploading' as const,
-      createdAt: formatDate(new Date())
-    }
+        id: uploadId,
+        file,
+        progress: 0,
+        status: 'uploading' as const,
+        createdAt: formatDate(new Date())
+    };
     
-    setActiveUploads(prev => [...prev, newUpload])
-    setUploadedFiles(prev => [...prev, { 
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      createdAt: newUpload.createdAt,
-      fileType,
-      status: 'En progreso'
-    }])
+    setActiveUploads(prev => [...prev, newUpload]);
 
-    // Simulate upload progress
-    let progress = 0
+    // Simular progreso de subida
+    let progress = 0;
     const interval = setInterval(() => {
-      progress += 10
-      
-      if (progress <= 100) {
-        setActiveUploads(prev => {
-          const updatedUploads = prev.map(upload => {
-            if (upload.id === newUpload.id) {
-              // If the upload was canceled, clear the interval
-              if (!prev.some(u => u.id === newUpload.id)) {
-                clearInterval(interval)
-                return upload
-              }
-              
-              return { 
-                ...upload, 
-                progress,
-                status: progress === 100 ? 'completed' as const : 'uploading' as const
-              }
-            }
-            return upload
-          })
+        progress += 10;
+        
+        if (progress <= 100) {
+            setActiveUploads(prev => 
+                prev.map(upload => 
+                    upload.id === uploadId
+                        ? { ...upload, progress, status: progress === 100 ? 'completed' : 'uploading' }
+                        : upload
+                )
+            );
 
-          // Store the interval ID
-          intervals.set(uploadId, interval)
+            if (progress === 100) {
+                clearInterval(interval);
+                
+                // Una vez completada la subida, crear la reunión para transcripción
+                const meeting: Meeting = {
+                    id: uploadId,
+                    title: file.name,
+                    date: new Date(),
+                    source: 'Clip',
+                    uploadMethod: 'Manual',
+                    currentStep: 'Transcribiendo',
+                    progress: 0,
+                    status: {
+                        isUploading: false,       // Ya no está subiendo
+                        isProcessing: true,       // Comienza la transcripción
+                        isFinished: false,
+                        hasTranscription: false,
+                        hasSummary: false,
+                        transcriptionStarted: false
+                    }
+                };
+                
+                // Añadir al contexto de reuniones para comenzar transcripción
+                addMeeting(meeting);
 
-          return updatedUploads
-        })
-
-        if (progress === 100) {
-          setUploadedFiles(prev => {
-            // Only update to 'Subido' if the file hasn't been canceled
-            const currentFile = prev.find(f => f.name === file.name)
-            if (currentFile && currentFile.status !== 'Cancelado') {
-              return prev.map(f => 
-                f.name === file.name
-                  ? { ...f, status: 'Subido' }
-                  : f
-              )
+                // Limpiar el upload activo después de un momento
+                setTimeout(() => {
+                    setActiveUploads(prev => prev.filter(u => u.id !== uploadId));
+                }, 2000);
             }
-            return prev
-          })
-          
-          setTimeout(() => {
-            setActiveUploads(prev => prev.filter(upload => upload.id !== newUpload.id))
-            // Clear the interval when upload is complete
-            if (intervals.has(uploadId)) {
-              clearInterval(intervals.get(uploadId))
-              intervals.delete(uploadId)
-            }
-          }, 2000)
-          
-          clearInterval(interval)
         }
-      }
-    }, 500)
-
-    // Store the initial interval
-    intervals.set(uploadId, interval)
+    }, 500);
   }
 
-  const removeFile = (index: number) => {
-    setUploadedFiles((prev) => prev.filter((_, i) => i !== index))
+  const removeFile = (id: string) => {
+    // Eliminar del contexto de reuniones en lugar de uploadedFiles
+    removeMeeting(id);
   }
 
   return (
-    <div className="min-h-screen w-full">
-      <div className="p-8">
-        <h1 className="text-2xl font-bold text-gray-900">Subidas</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Sube tus archivos de video o audio para procesarlos
-        </p>
-      </div>
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold mb-8">Subir clips</h1>
+      
+      <FileUpload onFileSelect={handleFileSelect} />
 
-      <div className="flex-1 bg-white min-h-[calc(100vh-12rem)] w-full">
-        <FileUpload onFileSelect={handleFileSelect} />
-
-        <div className="px-8 py-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Archivos subidos</h2>
-          <div className="w-full">
-            <div className="grid grid-cols-4 gap-4 py-2 text-sm text-gray-500 border-b border-gray-200">
-              <div>Nombre</div>
-              <div>Creado a las</div>
-              <div>Método de subida</div>
-              <div>Estado</div>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {uploadedFiles.map((file, index) => (
-                <div key={index} className="grid grid-cols-4 gap-4 py-4 items-center">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {file.fileType}
-                    </span>
-                    <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">
-                      {file.name}
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-500">{file.createdAt}</div>
-                  <div className="text-sm text-gray-500">Manual</div>
-                  <div className="flex items-center justify-between">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      file.status === 'Subido' 
-                        ? 'bg-green-100 text-green-800'
-                        : file.status === 'Cancelado'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {file.status}
-                    </span>
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="text-gray-400 hover:text-gray-500 bg-black bg-opacity-5 rounded-md p-1"
-                    >
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {files.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-medium mb-4">Archivos subidos</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nombre
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Creado a las
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Método de subida
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="relative px-6 py-3">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {files.map((file, index) => (
+                  <tr key={index}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium text-gray-900">
+                          {file.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{file.createdAt}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">Manual</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        file.status === 'Transcrito' 
+                            ? 'bg-green-100 text-green-800'
+                            : file.status === 'Transcribiendo'
+                                ? 'bg-blue-100 text-blue-800'
+                                : file.status === 'Subiendo'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
+                      }`}>
+                        {file.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => removeFile(file.id)}
+                        className="text-gray-400 hover:text-gray-500"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 } 

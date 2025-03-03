@@ -30,19 +30,21 @@ src/
 ## Getting Started
 
 1. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+    ```bash
+    npm install
+    ```
 
 2. Start the development server:
-   ```bash
-   npm run dev
-   ```
+
+    ```bash
+    npm run dev
+    ```
 
 3. Build for production:
-   ```bash
-   npm run build
-   ```
+    ```bash
+    npm run build
+    ```
 
 ## Development Guidelines
 
@@ -64,3 +66,10 @@ src/
 - Write clean, maintainable code
 - Document complex logic
 - Use proper Git workflow
+
+# Meeting Recorder
+
+## Requisitos
+
+- Cuenta de Google Workspace con plan Business Standard o superior para grabaciones de Meet
+- ...
