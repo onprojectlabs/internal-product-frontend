@@ -1,29 +1,37 @@
-export type DocumentStatus =
-    | "uploaded"
-    | "to_process"
-    | "processing"
-    | "processed"
-    | "failed";
+export type DocumentType = "pdf" | "doc" | "docx" | "txt" | "other";
+export type DocumentStatus = "uploaded" | "processing" | "processed" | "failed";
 
 export interface Document {
     id: string;
     filename: string;
-    file_type: string;
-    description?: string;
-    folder_id?: string;
+    file_type: DocumentType;
     file_size: number;
     file_path: string;
     content_type: string;
     uploaded_by_id: string;
+    folder_id?: string;
     created_at: string;
     updated_at: string;
+    description?: string;
     status: DocumentStatus;
     processed_at?: string;
-    analysis_summary?: string;
-    key_points?: Record<string, any>;
-    error_message?: string;
-    analysis_metadata?: Record<string, any>;
+    title?: string;
     summary?: string;
-    keywords?: string[];
-    topics?: string[];
+    document_metadata: Record<string, unknown>;
+    error_details: Array<Record<string, unknown>>;
+    processing_stats: Record<string, unknown>;
+}
+
+// Interfaz para la respuesta del árbol de carpetas
+export interface FolderTreeResponse {
+    name: string;
+    description: string;
+    id: string;
+    created_by_id: string;
+    created_at: string;
+    updated_at: string;
+    documents: Document[];
+    total_documents: number;
+    subfolders: FolderTreeResponse[];
+    total_subfolders: number;
 }

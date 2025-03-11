@@ -5,19 +5,19 @@ import {
   Clock,
   Download,
   Sparkles,
-  Hash,
-  List,
-  Circle as BulletIcon
+  Eye,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/LoadingState';
 import { useState, useEffect } from 'react';
 import { Document } from '../types/documents';
-import { Document as PDFDocument, Page } from 'react-pdf';
-import '../lib/pdf.worker';  // Importamos el worker
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { documentsService } from '../services/documentsService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/Dialog";
 
 export function DocumentPage() {
   const { id } = useParams();
@@ -26,18 +26,15 @@ export function DocumentPage() {
   const from = location.state?.from;
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
       const loadDocument = async () => {
         try {
           const doc = await documentsService.getDocument(id);
-          if (doc) {
-            console.log('Tipo de archivo:', doc.file_type);
-            console.log('Ruta del archivo:', doc.file_path);
-          }
           setDocument(doc);
         } catch (error) {
           console.error('Error al cargar el documento:', error);
@@ -59,113 +56,87 @@ export function DocumentPage() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (document) {
+      console.log("Descargando documento:", document);
       try {
-        // Crear URL del archivo y descargar
-        const link = window.document.createElement('a');
-        link.href = document.file_path;
-        link.download = document.filename;
-        window.document.body.appendChild(link);
-        link.click();
-        window.document.body.removeChild(link);
+        await documentsService.downloadDocument(document.id, document.filename);
       } catch (error) {
-        console.error('Error al descargar el archivo:', error);
+        console.error('Error al descargar el documento:', error);
+        alert('Error al descargar el documento');
       }
     }
   };
 
-  const renderPreview = () => {
+  const handlePreview = async () => {
+    if (!document) return;
+
+    setLoadingPreview(true);
+    try {
+      const url = await documentsService.getPreviewUrl(document.id);
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+    } catch (error) {
+      console.error('Error al cargar la vista previa:', error);
+      alert('Error al cargar la vista previa');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  };
+
+  const renderPreviewContent = () => {
     if (!document) return null;
 
-    switch (document.file_type) {
+    if (loadingPreview) {
+      return (
+        <div className="text-center py-8">
+          <LoadingState message="Cargando vista previa..." />
+        </div>
+      );
+    }
+
+    if (!previewUrl) {
+      return (
+        <div className="text-center py-8 text-muted-foreground">
+          <FileText className="h-12 w-12 mx-auto mb-4" />
+          <p>Error al cargar la vista previa</p>
+          <p className="text-sm mt-2">Intenta descargar el archivo</p>
+        </div>
+      );
+    }
+
+    switch (document.file_type.toLowerCase()) {
       case 'application/pdf':
+      case 'pdf':
         return (
-          <div className="w-full bg-muted rounded-lg overflow-hidden">
-            <PDFDocument
-              file={document.file_path}
-              onLoadSuccess={({ numPages }) => {
-                console.log('PDF cargado exitosamente', { numPages });
-                setNumPages(numPages);
-              }}
-              onLoadError={(error) => {
-                console.error('Error al cargar PDF:', error, document.file_type);
-              }}
-              error={
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-4" />
-                  <p>Error al cargar el PDF</p>
-                  <p className="text-sm mt-2">Intenta descargar el archivo</p>
-                </div>
-              }
-              loading={
-                <div className="text-center py-8">
-                  <LoadingState message="Cargando PDF..." />
-                </div>
-              }
-              className="mx-auto"
-            >
-              <Page 
-                pageNumber={pageNumber} 
-                width={600}
-                className="mx-auto"
-                error={
-                  <div className="text-center py-4 text-muted-foreground">
-                    <p>Error al cargar la página {pageNumber}</p>
-                  </div>
-                }
-                loading={
-                  <div className="text-center py-4">
-                    <LoadingState message={`Cargando página ${pageNumber}...`} />
-                  </div>
-                }
-              />
-            </PDFDocument>
-            {numPages && numPages > 1 && (
-              <div className="flex items-center justify-between p-4 border-t border-border">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageNumber(p => Math.max(1, p - 1))}
-                  disabled={pageNumber <= 1}
-                >
-                  Anterior
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Página {pageNumber} de {numPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
-                  disabled={pageNumber >= numPages}
-                >
-                  Siguiente
-                </Button>
-              </div>
-            )}
-          </div>
+          <iframe
+            src={previewUrl}
+            className="w-full h-[80vh]"
+            title={document.filename}
+          />
         );
 
       case 'text/plain':
       case 'text/markdown':
         return (
-          <div className="w-full h-[400px] bg-muted rounded-lg p-6 overflow-auto">
-            <pre className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {document.description || 'No hay contenido disponible'}
-            </pre>
-          </div>
+          <pre className="text-sm text-muted-foreground whitespace-pre-wrap p-6">
+            {document.description || 'No hay contenido disponible'}
+          </pre>
         );
 
       default:
         return (
-          <div className="w-full bg-muted rounded-lg p-12 flex items-center justify-center">
-            <div className="text-center">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">
-                Vista previa no disponible
-              </p>
-            </div>
+          <div className="text-center py-8 text-muted-foreground">
+            <FileText className="h-12 w-12 mx-auto mb-4" />
+            <p>Vista previa no disponible para este tipo de archivo</p>
           </div>
         );
     }
@@ -197,181 +168,163 @@ export function DocumentPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {/* Header */}
-      <div className="flex items-start gap-4 mb-6">
-        <button
-          onClick={handleBack}
-          className="p-2 bg-background hover:bg-muted rounded-lg transition-colors text-muted-foreground"
-        >
-          <ArrowLeftIcon className="h-5 w-5" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground truncate">
-              {document.filename}
-            </h1>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>{new Date(document.created_at).toLocaleDateString()}</span>
+    <>
+      <div className="container mx-auto p-6 max-w-7xl">
+        {/* Header */}
+        <div className="flex items-start gap-4 mb-6">
+          <button
+            onClick={handleBack}
+            className="p-2 bg-background hover:bg-muted rounded-lg transition-colors text-muted-foreground"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2">
+              <FileText className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold text-foreground truncate">
+                {document.filename}
+              </h1>
             </div>
-            <span>{document.file_type}</span>
-            {document.file_size && (
-              <span>{Math.round(document.file_size / 1024)} KB</span>
-            )}
-            <span className={`px-2 py-0.5 rounded-full text-xs ${
-              document.status === 'processed' ? 'bg-green-100 text-green-700' :
-              document.status === 'failed' ? 'bg-red-100 text-red-700' :
-              document.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-              'bg-gray-100 text-gray-700'
-            }`}>
-              {document.status === 'uploaded' ? 'Subido' :
-               document.status === 'to_process' ? 'Por procesar' :
-               document.status === 'processing' ? 'Procesando' :
-               document.status === 'processed' ? 'Procesado' :
-               'Error'}
-            </span>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <span>{new Date(document.created_at).toLocaleDateString()}</span>
+              </div>
+              <span>{document.file_type}</span>
+              {document.file_size && (
+                <span>{Math.round(document.file_size / 1024)} KB</span>
+              )}
+              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                document.status === 'processed' ? 'bg-green-100 text-green-700' :
+                document.status === 'failed' ? 'bg-red-100 text-red-700' :
+                document.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-700'
+              }`}>
+                {document.status === 'uploaded' ? 'Subido' :
+                 document.status === 'processing' ? 'Procesando' :
+                 document.status === 'processed' ? 'Procesado' :
+                 'Error'}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Grid de contenido */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna principal */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Card del documento */}
-          <div className="bg-card rounded-lg p-6">
-            {/* Vista previa */}
-            <div className="mb-6">
-              {renderPreview()}
+        {/* Grid de contenido */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Columna principal */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Card del documento */}
+            <div className="bg-card rounded-lg p-6">
+              {/* Acciones del documento */}
+              <div className="flex gap-4">
+                <Button 
+                  onClick={handlePreview}
+                  variant="outline"
+                  className="flex-1 flex items-center justify-center gap-2"
+                  disabled={loadingPreview}
+                >
+                  <Eye className="h-4 w-4" />
+                  Vista previa
+                </Button>
+                <Button 
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="flex-1 flex items-center justify-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Descargar
+                </Button>
+              </div>
             </div>
 
-            {/* Botón de descarga */}
-            <Button 
-              onClick={handleDownload}
-              variant="outline"
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Descargar documento
-            </Button>
+            {/* Sección de resumen - Debajo de los botones */}
+            {(document.status === 'uploaded' || document.status === 'processing') ? (
+              <div className="bg-card rounded-lg p-6">
+                <h2 className="text-lg font-semibold mb-4">Resumen</h2>
+                <div className="text-center py-8 text-muted-foreground">
+                  <Sparkles className="h-12 w-12 mx-auto mb-4" />
+                  <p>Generando resumen...</p>
+                </div>
+              </div>
+            ) : document.status === 'processed' && (document.title || document.summary) ? (
+              <div className="bg-card rounded-lg p-6">
+                {document.title && (
+                  <>
+                    <h2 className="text-lg font-semibold mb-4">Título</h2>
+                    <p className="text-muted-foreground mb-6">{document.title}</p>
+                  </>
+                )}
+                {document.summary && (
+                  <>
+                    <h2 className="text-lg font-semibold mb-4">Resumen</h2>
+                    <p className="text-muted-foreground">{document.summary}</p>
+                  </>
+                )}
+              </div>
+            ) : document.status === 'failed' && document.error_details && document.error_details.length > 0 ? (
+              <div className="bg-card rounded-lg p-6">
+                <h2 className="text-lg font-semibold mb-4">Error en el procesamiento</h2>
+                <div className="space-y-2">
+                  {document.error_details.map((error, index) => (
+                    <p key={index} className="text-destructive">
+                      {JSON.stringify(error)}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          {/* Sección de resumen - Debajo de la vista previa */}
-          {(document.status === 'uploaded' || document.status === 'processing') ? (
+          {/* Barra lateral */}
+          <div className="space-y-6">
+            {/* Detalles del documento */}
             <div className="bg-card rounded-lg p-6">
-              <h2 className="text-lg font-semibold mb-4">Resumen</h2>
-              <div className="text-center py-8 text-muted-foreground">
-                <Sparkles className="h-12 w-12 mx-auto mb-4" />
-                <p>Generando resumen...</p>
-              </div>
-            </div>
-          ) : document.status === 'processed' && document.summary && (
-            <div className="bg-card rounded-lg p-6">
-              <h2 className="text-lg font-semibold mb-4">Resumen</h2>
-              <p className="text-muted-foreground">{document.summary}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Barra lateral */}
-        <div className="space-y-6">
-          {/* Detalles del documento */}
-          <div className="bg-card rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Detalles</h2>
-            <dl className="space-y-4">
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Estado</dt>
-                <dd className="mt-1">{
-                  document.status === 'uploaded' ? 'Subido' :
-                  document.status === 'to_process' ? 'Por procesar' :
-                  document.status === 'processing' ? 'Procesando' :
-                  document.status === 'processed' ? 'Procesado' :
-                  'Error'
-                }</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Tipo</dt>
-                <dd className="mt-1">{document.file_type}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Tamaño</dt>
-                <dd className="mt-1">{Math.round(document.file_size / 1024)} KB</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Creado</dt>
-                <dd className="mt-1">{new Date(document.created_at).toLocaleDateString()}</dd>
-              </div>
-              {document.description && (
+              <h2 className="text-lg font-semibold mb-4">Detalles</h2>
+              <dl className="space-y-4">
                 <div>
-                  <dt className="text-sm font-medium text-muted-foreground">Descripción</dt>
-                  <dd className="mt-1">{document.description}</dd>
+                  <dt className="text-sm font-medium text-muted-foreground">Estado</dt>
+                  <dd className="mt-1">{
+                    document.status === 'uploaded' ? 'Subido' :
+                    document.status === 'processing' ? 'Procesando' :
+                    document.status === 'processed' ? 'Procesado' :
+                    'Error'
+                  }</dd>
                 </div>
-              )}
-            </dl>
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Tipo</dt>
+                  <dd className="mt-1">{document.file_type}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Tamaño</dt>
+                  <dd className="mt-1">{Math.round(document.file_size / 1024)} KB</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Creado</dt>
+                  <dd className="mt-1">{new Date(document.created_at).toLocaleDateString()}</dd>
+                </div>
+                {document.description && (
+                  <div>
+                    <dt className="text-sm font-medium text-muted-foreground">Descripción</dt>
+                    <dd className="mt-1">{document.description}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
           </div>
-
-          {/* Secciones de procesamiento en la barra lateral */}
-          {(document.status === 'uploaded' || document.status === 'processing') ? (
-            <>
-              {/* Palabras clave */}
-              <div className="bg-card rounded-lg p-6">
-                <h2 className="text-lg font-semibold mb-4">Palabras clave</h2>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Hash className="h-12 w-12 mx-auto mb-4" />
-                  <p>Extrayendo palabras clave...</p>
-                </div>
-              </div>
-
-              {/* Temas principales */}
-              <div className="bg-card rounded-lg p-6">
-                <h2 className="text-lg font-semibold mb-4">Temas principales</h2>
-                <div className="text-center py-8 text-muted-foreground">
-                  <List className="h-12 w-12 mx-auto mb-4" />
-                  <p>Identificando temas...</p>
-                </div>
-              </div>
-            </>
-          ) : document.status === 'processed' && (
-            <>
-              {/* Palabras clave */}
-              {document.keywords && document.keywords.length > 0 && (
-                <div className="bg-card rounded-lg p-6">
-                  <h2 className="text-lg font-semibold mb-4">Palabras clave</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {document.keywords.map((keyword, index) => (
-                      <span 
-                        key={index}
-                        className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-sm"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Temas principales */}
-              {document.topics && document.topics.length > 0 && (
-                <div className="bg-card rounded-lg p-6">
-                  <h2 className="text-lg font-semibold mb-4">Temas principales</h2>
-                  <div className="space-y-3">
-                    {document.topics.map((topic, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <BulletIcon className="h-4 w-4 text-primary" />
-                        <span>{topic}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
-    </div>
+
+      {/* Modal de vista previa */}
+      <Dialog open={previewOpen} onOpenChange={closePreview}>
+        <DialogContent className="max-w-5xl w-full">
+          <DialogHeader>
+            <DialogTitle>{document.filename}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            {renderPreviewContent()}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 } 

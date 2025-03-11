@@ -24,19 +24,20 @@ export function FolderAssignment({
   onOpenChange,
   onAssign 
 }: FolderAssignmentProps) {
-  const { fetchDocuments } = useDocuments();
+  const { refreshDocuments } = useDocuments();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   useEffect(() => {
     const fetchFolders = async () => {
       try {
         setIsLoading(true);
+        setError(null);
         const data = await foldersService.getFolders();
         setFolders(data.items);
-        setError(null);
       } catch (err) {
         console.error('Error al obtener las carpetas:', err);
         setError('Error al cargar las carpetas');
@@ -52,27 +53,28 @@ export function FolderAssignment({
 
   const handleAssignFolder = async (folderId: string) => {
     try {
-      console.log('Intentando asignar a carpeta:', {
-        folderId,
-        itemId,
-        itemType
-      });
-
+      setIsAssigning(true);
+      setError(null);
+      
       if (itemType === 'document') {
         await documentsService.updateDocument(itemId, {
           folder_id: folderId
         });
         
-        // Actualizar el contexto de documentos
-        await fetchDocuments();
-        
-        // Notificar al padre
+        // Notificar al padre primero
         onAssign?.(folderId);
+        
+        // Cerrar el diálogo
         onOpenChange(false);
+        
+        // Actualizar la lista de documentos
+        await refreshDocuments();
       }
     } catch (error) {
       console.error('Error al asignar carpeta:', error);
       setError('Error al asignar a la carpeta');
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -95,7 +97,20 @@ export function FolderAssignment({
               <p className="text-destructive mb-2">{error}</p>
               <Button 
                 variant="outline" 
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  setError(null);
+                  setIsLoading(true);
+                  foldersService.getFolders().then(
+                    data => {
+                      setFolders(data.items);
+                      setIsLoading(false);
+                    },
+                    error => {
+                      setError('Error al cargar las carpetas');
+                      setIsLoading(false);
+                    }
+                  );
+                }}
               >
                 Reintentar
               </Button>
@@ -111,6 +126,7 @@ export function FolderAssignment({
                       variant="outline"
                       className="justify-start h-auto py-4 px-4"
                       onClick={() => handleAssignFolder(folder.id)}
+                      disabled={isAssigning}
                     >
                       <div className="flex items-start gap-3">
                         <FolderIcon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
@@ -132,6 +148,7 @@ export function FolderAssignment({
                   onClick={handleCreateFolder}
                   variant="outline"
                   className="flex items-center gap-2 w-full"
+                  disabled={isAssigning}
                 >
                   <PlusIcon className="h-4 w-4" />
                   Crear nueva carpeta
@@ -149,6 +166,7 @@ export function FolderAssignment({
                   onClick={handleCreateFolder}
                   variant="outline"
                   className="flex items-center gap-2"
+                  disabled={isAssigning}
                 >
                   <PlusIcon className="h-4 w-4" />
                   Crear nueva carpeta
