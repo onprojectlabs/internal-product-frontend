@@ -1,26 +1,7 @@
-import type { Folder, FolderItem } from "../../types/index";
+import type { FolderItem } from "../../types/index";
+import type { FolderTreeResponse } from "../../types/documents";
 
 const API_URL = "http://localhost:8000/api/v1";
-
-interface FolderTreeResponse {
-    name: string;
-    description: string;
-    id: string;
-    created_by_id: string;
-    created_at: string;
-    updated_at: string;
-    documents: Array<{
-        id: string;
-        name: string;
-        type: "document";
-        date: string;
-        size?: string;
-        status?: string;
-    }>;
-    total_documents: number;
-    subfolders: FolderTreeResponse[];
-    total_subfolders: number;
-}
 
 export const foldersService = {
     async getFolders(params?: {
