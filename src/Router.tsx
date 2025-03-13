@@ -1,22 +1,19 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { HomePage } from './pages/HomePage';
-import { MeetingsPage } from './pages/MeetingsPage';
-import { ClipsPage } from './pages/ClipsPage';
-import { IntegrationsPage } from './pages/IntegrationsPage';
-import { TranscriptionPage } from './pages/TranscriptionPage';
-import { ChatPage } from './pages/ChatPage';
-import { FolderPage } from './pages/FolderPage';
-import { MeetingPage } from './pages/MeetingPage';
-import { ClipPage } from './pages/ClipPage';
-import { FoldersPage } from './pages/FoldersPage';
-import { BrainPage } from './pages/BrainPage';
-import { DocumentsPage } from './pages/DocumentsPage';
-import { DocumentPage } from './pages/DocumentPage';
-import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
+import { MeetingsPage } from './pages/meetings/MeetingsPage';
+import { ClipsPage } from './pages/clips/ClipsPage';
+import { IntegrationsPage } from './pages/integrations/IntegrationsPage';
+import { FolderPage } from './pages/folders/FolderPage';
+import { MeetingPage } from './pages/meetings/MeetingPage';
+import { ClipPage } from './pages/clips/ClipPage';
+import { FoldersPage } from './pages/folders/FoldersPage';
+import { BrainPage } from './pages/brain/BrainPage';
+import { DocumentsPage } from './pages/documents/DocumentsPage';
+import { DocumentPage } from './pages/documents/DocumentPage';
+import { LoginPage } from './pages/auth/LoginPage';
+import { RegisterPage } from './pages/auth/RegisterPage';
 import { useAuth } from './context/AuthContext';
-import { UploadProgress } from './components/UploadProgress';
 
 function LoadingScreen() {
   return (
@@ -71,11 +68,8 @@ export function Router() {
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="document/:id" element={<DocumentPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
-          <Route path="/transcriptions/:id" element={<TranscriptionPage />} />
-          <Route path="/chat/:id" element={<ChatPage />} />
         </Route>
       </Routes>
-      <UploadProgress />
     </div>
   );
 } 

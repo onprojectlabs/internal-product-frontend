@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sidebar, SidebarBody, SidebarLink } from '../components/ui/Sidebar';
+import { Sidebar, SidebarBody, SidebarLink } from '../components/layout/Sidebar';
 import { 
     HomeIcon, 
     Puzzle as PuzzleIcon,
@@ -12,12 +12,12 @@ import {
 } from 'lucide-react';
 import { FileVideo } from 'lucide-react';
 import { FolderIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
-import { ActivityLogModal } from '../components/ActivityLogModal';
+import { ActivityLogModal } from '../components/activity/ActivityLogModal';
 import { useThemeContext } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { Outlet } from 'react-router-dom';
-import { FloatingChat } from '../components/FloatingChat';
+import { FloatingChat } from '../components/brain/FloatingChat';
 import { cn } from '../lib/utils';
 
 export function MainLayout() {
