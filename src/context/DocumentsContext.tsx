@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { Document, DocumentStatus } from '../types/documents';
-import { documentsService } from '../services/documentsService';
+import { documentsService } from '../services/documents/documentsService';
 import { useAuth } from './AuthContext';
 
 interface DocumentsState {

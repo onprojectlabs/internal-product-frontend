@@ -4,7 +4,6 @@ import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider } from './context/AuthContext'
 import { MeetingsProvider } from './context/MeetingsContext'
 import { ClipsProvider } from './context/ClipsContext'
-import { UploadProvider } from './context/UploadContext'
 import { ActivityProvider } from './context/ActivityContext'
 import { DocumentsProvider } from './context/DocumentsContext'
 import './App.css'
@@ -17,13 +16,11 @@ function App() {
           <AuthProvider>
             <MeetingsProvider>
               <DocumentsProvider>
-                <UploadProvider>
-                  <ClipsProvider>
-                    <ActivityProvider>
-                      <Router />
-                    </ActivityProvider>
-                  </ClipsProvider>
-                </UploadProvider>
+                <ClipsProvider>
+                  <ActivityProvider>
+                    <Router />
+                  </ActivityProvider>
+                </ClipsProvider>
               </DocumentsProvider>
             </MeetingsProvider>
           </AuthProvider>

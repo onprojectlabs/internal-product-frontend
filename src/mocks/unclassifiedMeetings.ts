@@ -1,4 +1,4 @@
-import { Activity } from "../components/ActivityList";
+import { Activity } from "../components/activity/ActivityList";
 
 export const unclassifiedMeetings: Activity[] = [
     {

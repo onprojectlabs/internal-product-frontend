@@ -7,15 +7,12 @@ import {
   PlusIcon,
   ArrowRightIcon,
 } from '@heroicons/react/24/outline'
-import { ActivityList } from '../components/ActivityList'
+import { ActivityList } from '../components/activity/ActivityList'
 import { useEffect, useState } from 'react'
-import type { Meeting, Folder } from '../types'
-import { meetingsApi } from '../mocks/api/meetings'
-import { LoadingState } from '../components/LoadingState'
-import { NewFolderDialog } from '../components/NewFolderDialog'
+import type { Folder } from '../types/index'
+import { LoadingState } from '../components/common/LoadingState'
+import { NewFolderDialog } from '../components/folders/NewFolderDialog'
 import { Button } from '../components/ui/Button'
-import { useMeetings } from '../context/MeetingsContext'
-import { useClips } from '../context/ClipsContext'
 import { foldersService } from '../services/folders/foldersService'
 
 const quickActions = [
@@ -40,41 +37,10 @@ const quickActions = [
 ];
 
 export function HomePage() {
-  const { meetings } = useMeetings();
-  const { clips } = useClips();
-  const [unclassifiedMeetings, setUnclassifiedMeetings] = useState<Meeting[]>([]);
-  const [recentActivities, setRecentActivities] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
   const [recentFolders, setRecentFolders] = useState<Folder[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  // Función auxiliar para contar elementos
-  const getFolderItemsCount = (folderId: string) => {
-    const meetingsCount = meetings.filter(m => m.folderId === folderId).length;
-    const clipsCount = clips.filter(c => c.folderId === folderId).length;
-    return meetingsCount + clipsCount;
-  };
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [unclassifiedResponse, recentResponse] = await Promise.all([
-          meetingsApi.getUnclassifiedMeetings(),
-          meetingsApi.getMeetings(1, 5) // Solo las 5 más recientes
-        ]);
-
-        setUnclassifiedMeetings(unclassifiedResponse.data);
-        setRecentActivities(recentResponse.data);
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-  }, []);
 
   useEffect(() => {
     const fetchRecentFolders = async () => {
@@ -106,19 +72,6 @@ export function HomePage() {
       </div>
     );
   }
-
-  // Convertir las reuniones a actividades para el ActivityList
-  const activitiesFromMeetings = recentActivities.map(meeting => ({
-    id: meeting.id,
-    type: 'meeting' as const,
-    name: meeting.title,
-    event: meeting.date > new Date() ? 'scheduled' :
-           meeting.status.isProcessing ? 'transcribing' : 
-           meeting.status.hasTranscription ? 'transcribed' : 
-           meeting.status.isUploading ? 'uploading' : 'processed',
-    platform: meeting.source,
-    timestamp: meeting.date.toLocaleString()
-  }));
 
   return (
     <div className="container max-w-7xl mx-auto py-6 space-y-6">
@@ -191,7 +144,7 @@ export function HomePage() {
                 <div className="flex items-start justify-between">
                   <FolderIcon className="h-8 w-8 text-primary mb-2" />
                   <span className="text-xs text-muted-foreground">
-                    {new Date(folder.created_at).toLocaleDateString('es-ES', {
+                    {new Date(folder.createdAt).toLocaleDateString('es-ES', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric'
@@ -239,7 +192,7 @@ export function HomePage() {
           </button>
         </div>
         <ActivityList 
-          activities={activitiesFromMeetings}
+          activities={[]}
           className="bg-card rounded-lg"
           showEmpty={true}
           maxItems={5}

@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useState } from 'react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useLocalStorage } from '../hooks';
 
 export interface ClipStatus {
   isProcessing: boolean;
