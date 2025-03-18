@@ -14,6 +14,7 @@ import { LoadingState } from '../components/common/LoadingState'
 import { NewFolderDialog } from '../components/folders/NewFolderDialog'
 import { Button } from '../components/ui/Button'
 import { foldersService } from '../services/folders/foldersService'
+import { FolderCard } from '../components/folders/FolderCard'
 
 const quickActions = [
   {
@@ -26,7 +27,7 @@ const quickActions = [
     id: '2',
     name: 'Importar documento',
     icon: DocumentTextIcon,
-    to: '/import'
+    to: '/documents'
   },
   {
     id: '3',
@@ -105,13 +106,24 @@ export function HomePage() {
               Accede rápidamente a tus carpetas recientes
             </p>
           </div>
-          <Button 
-            onClick={() => setIsNewFolderOpen(true)}
-            className="flex items-center gap-2"
-          >
-            <PlusIcon className="h-4 w-4" />
-            Nueva carpeta
-          </Button>
+          {recentFolders.length >= 3 ? (
+            <Link to="/folders">
+              <Button 
+                className="flex items-center gap-2"
+              >
+                <ArrowRightIcon className="h-4 w-4" />
+                Ver todas
+              </Button>
+            </Link>
+          ) : (
+            <Button 
+              onClick={() => setIsNewFolderOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <PlusIcon className="h-4 w-4" />
+              Nueva carpeta
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
@@ -136,28 +148,7 @@ export function HomePage() {
         ) : recentFolders.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {recentFolders.map(folder => (
-              <Link
-                key={folder.id}
-                to={`/folder/${folder.id}`}
-                className="group bg-card hover:bg-card/90 transition-colors rounded-lg p-4 cursor-pointer border border-border"
-              >
-                <div className="flex items-start justify-between">
-                  <FolderIcon className="h-8 w-8 text-primary mb-2" />
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(folder.createdAt).toLocaleDateString('es-ES', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    })}
-                  </span>
-                </div>
-                <h3 className="font-medium truncate group-hover:text-primary transition-colors">
-                  {folder.name}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {folder.description}
-                </p>
-              </Link>
+              <FolderCard key={folder.id} folder={folder} />
             ))}
           </div>
         ) : (

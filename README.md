@@ -25,7 +25,14 @@ src/
   ├── services/       # API services and data fetching
   ├── types/          # TypeScript type definitions
   └── utils/          # Utility functions
+docs/                 # Project documentation
+  ├── hooks/          # Documentation for custom hooks
+  └── index.md        # Documentation index
 ```
+
+## Documentation
+
+For detailed documentation on specific features and components, see the [docs directory](./docs/index.md).
 
 ## Getting Started
 

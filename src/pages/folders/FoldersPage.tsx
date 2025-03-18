@@ -1,11 +1,11 @@
 import { FolderIcon } from '@heroicons/react/24/outline';
 import { PlusIcon, SearchIcon } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { useState, useEffect } from 'react';
 import { NewFolderDialog } from '../../components/folders/NewFolderDialog';
 import { foldersService } from '../../services/folders/foldersService';
 import { LoadingState } from '../../components/common/LoadingState';
+import { FolderCard } from '../../components/folders/FolderCard';
 
 interface Folder {
   id: string;
@@ -25,7 +25,9 @@ export function FoldersPage() {
     const fetchFolders = async () => {
       try {
         setIsLoading(true);
-        const data = await foldersService.getFolders();
+        const data = await foldersService.getFolders({
+          order_by_recent: true
+        });
         setFolders(data.items);
         setError(null);
       } catch (err) {
@@ -129,27 +131,5 @@ export function FoldersPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function FolderCard({ folder }: { folder: Folder }) {
-  return (
-    <Link 
-      to={`/folder/${folder.id}`}
-      className="bg-card hover:bg-card/90 transition-colors rounded-lg p-4 cursor-pointer border border-border"
-    >
-      <div className="flex items-start justify-between">
-        <FolderIcon className="h-8 w-8 text-primary mb-2" />
-        <span className="text-xs text-muted-foreground">
-          {new Date(folder.created_at).toLocaleDateString()}
-        </span>
-      </div>
-      <h3 className="font-medium truncate group-hover:text-primary transition-colors">
-        {folder.name}
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        {folder.description}
-      </p>
-    </Link>
   );
 } 

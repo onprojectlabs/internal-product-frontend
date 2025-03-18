@@ -10,8 +10,10 @@ import {
 import { Button } from '../../components/ui/Button';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useState, useEffect } from 'react';
-import { Document } from '../../types/documents';
+import { Document, DocumentStatus } from '../../types/documents';
 import { documentsService } from '../../services/documents/documentsService';
+import { useDocumentWebSocket } from '../../context/DocumentWebSocketContext';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import {
   Dialog,
   DialogContent,
@@ -29,13 +31,22 @@ export function DocumentPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  
+  // Variables para WebSocket
+  const { connectWebSocket, getDocumentStatus } = useDocumentWebSocket();
+  const [connectionAttempted, setConnectionAttempted] = useState(false);
+  const [localDocumentState, setLocalDocumentState] = useState<DocumentStatus | null>(null);
+  const [localProgressPercentage, setLocalProgressPercentage] = useState<number>(0);
 
   useEffect(() => {
     if (id) {
       const loadDocument = async () => {
         try {
           const doc = await documentsService.getDocument(id);
-          setDocument(doc);
+          if (doc) {
+            setDocument(doc);
+            setLocalDocumentState(doc.status);
+          }
         } catch (error) {
           console.error('Error al cargar el documento:', error);
         } finally {
@@ -45,6 +56,52 @@ export function DocumentPage() {
       loadDocument();
     }
   }, [id]);
+
+  // Conexión WebSocket para documento en procesamiento
+  useEffect(() => {
+    if (!document || !id) return;
+    
+    // No conectar si el documento ya está en estado final
+    const isDocumentInFinalState = document.status === 'processed' || document.status === 'failed';
+    if (isDocumentInFinalState) return;
+    
+    // Conectar WebSocket si el documento está en procesamiento o subido
+    if ((document.status === 'processing' || document.status === 'uploaded') && !connectionAttempted) {
+      connectWebSocket(document);
+      setConnectionAttempted(true);
+    }
+  }, [document, id, connectWebSocket, connectionAttempted]);
+
+  // Actualizar estado local cuando hay cambios en WebSocket
+  useEffect(() => {
+    if (!id) return;
+    
+    const wsStatus = getDocumentStatus(id);
+    if (wsStatus) {
+      // Actualizar estado
+      if (wsStatus.status) {
+        setLocalDocumentState(wsStatus.status as DocumentStatus);
+      }
+      
+      // Actualizar porcentaje
+      if (wsStatus.progress_percentage !== undefined) {
+        setLocalProgressPercentage(wsStatus.progress_percentage);
+      }
+      
+      // Si recibimos un estado final desde el WebSocket, actualizar el documento completo
+      if (wsStatus.status === 'processed' || wsStatus.status === 'failed' || wsStatus.progress_percentage === 100) {
+        // Forzar actualización del documento desde API
+        documentsService.getDocument(id).then(updatedDoc => {
+          if (updatedDoc) {
+            setDocument(updatedDoc);
+            setLocalDocumentState(updatedDoc.status);
+          }
+        }).catch(error => {
+          console.error('Error al actualizar el documento después de procesamiento:', error);
+        });
+      }
+    }
+  }, [id, getDocumentStatus]);
 
   const handleBack = () => {
     if (from?.type === 'folder') {
@@ -167,6 +224,10 @@ export function DocumentPage() {
     );
   }
 
+  // Determinar el estado a mostrar
+  const displayStatus = localDocumentState || document.status;
+  const progressPercentage = localProgressPercentage;
+
   return (
     <>
       <div className="container mx-auto p-6 max-w-7xl">
@@ -194,17 +255,11 @@ export function DocumentPage() {
               {document.file_size && (
                 <span>{Math.round(document.file_size / 1024)} KB</span>
               )}
-              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                document.status === 'processed' ? 'bg-green-100 text-green-700' :
-                document.status === 'failed' ? 'bg-red-100 text-red-700' :
-                document.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-700'
-              }`}>
-                {document.status === 'uploaded' ? 'Subido' :
-                 document.status === 'processing' ? 'Procesando' :
-                 document.status === 'processed' ? 'Procesado' :
-                 'Error'}
-              </span>
+              <StatusBadge 
+                status={displayStatus} 
+                percentage={progressPercentage} 
+                variant="small" 
+              />
             </div>
           </div>
         </div>
@@ -238,15 +293,15 @@ export function DocumentPage() {
             </div>
 
             {/* Sección de resumen - Debajo de los botones */}
-            {(document.status === 'uploaded' || document.status === 'processing') ? (
+            {(displayStatus === 'uploaded' || displayStatus === 'processing') ? (
               <div className="bg-card rounded-lg p-6">
                 <h2 className="text-lg font-semibold mb-4">Resumen</h2>
                 <div className="text-center py-8 text-muted-foreground">
                   <Sparkles className="h-12 w-12 mx-auto mb-4" />
-                  <p>Generando resumen...</p>
+                  <p>{progressPercentage > 0 ? `Generando resumen... ${progressPercentage}%` : "Generando resumen..."}</p>
                 </div>
               </div>
-            ) : document.status === 'processed' && (document.title || document.summary) ? (
+            ) : displayStatus === 'processed' && (document.title || document.summary) ? (
               <div className="bg-card rounded-lg p-6">
                 {document.title && (
                   <>
@@ -261,7 +316,7 @@ export function DocumentPage() {
                   </>
                 )}
               </div>
-            ) : document.status === 'failed' && document.error_details && document.error_details.length > 0 ? (
+            ) : displayStatus === 'failed' && document.error_details && document.error_details.length > 0 ? (
               <div className="bg-card rounded-lg p-6">
                 <h2 className="text-lg font-semibold mb-4">Error en el procesamiento</h2>
                 <div className="space-y-2">
@@ -283,12 +338,12 @@ export function DocumentPage() {
               <dl className="space-y-4">
                 <div>
                   <dt className="text-sm font-medium text-muted-foreground">Estado</dt>
-                  <dd className="mt-1">{
-                    document.status === 'uploaded' ? 'Subido' :
-                    document.status === 'processing' ? 'Procesando' :
-                    document.status === 'processed' ? 'Procesado' :
-                    'Error'
-                  }</dd>
+                  <dd className="mt-1">
+                    <StatusBadge 
+                      status={displayStatus} 
+                      percentage={progressPercentage}
+                    />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-muted-foreground">Tipo</dt>

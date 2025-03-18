@@ -1,12 +1,12 @@
 import { FileText, FolderIcon, PencilIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useDocuments } from '../../context/DocumentsContext';
+import { useDocumentWebSocket } from '../../context/DocumentWebSocketContext';
 import { FolderAssignment } from '../folders/FolderAssignment';
 import { Link } from 'react-router-dom';
 import { foldersService } from '../../services/folders/foldersService';
-import type { Document, DocumentStatus } from '../../types/documents';
-import type { Folder } from '../../types/index';
-import { cn } from '../../lib/utils';
+import type { Document, DocumentStatus, FolderTreeResponse } from '../../types/documents';
+import { StatusBadge } from '../ui/StatusBadge';
 
 interface DocumentCardProps {
   document: Document;
@@ -14,31 +14,69 @@ interface DocumentCardProps {
   onFolderChange?: (documentId: string) => void;
 }
 
-const statusConfig: Record<DocumentStatus, { label: string; className: string }> = {
-  uploaded: { 
-    label: 'Subido', 
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-  },
-  processing: { 
-    label: 'Procesando', 
-    className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-  },
-  processed: { 
-    label: 'Procesado', 
-    className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-  },
-  failed: { 
-    label: 'Error', 
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-  }
-};
-
 export function DocumentCard({ document, hideNavigation = false, onFolderChange }: DocumentCardProps) {
   const { updateDocument } = useDocuments();
+  const { connectWebSocket, getDocumentStatus } = useDocumentWebSocket();
   const [isAssigningFolder, setIsAssigningFolder] = useState(false);
-  const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<FolderTreeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionAttempted, setConnectionAttempted] = useState(false);
+  // Mantener una copia local del estado del documento que puede actualizarse mediante WebSocket
+  const [localDocumentState, setLocalDocumentState] = useState<DocumentStatus>(document.status);
+  const [localProgressPercentage, setLocalProgressPercentage] = useState<number>(0);
+  
+  // Verificar si el documento está en un estado final (procesado o fallido)
+  const isDocumentInFinalState = localDocumentState === 'processed' || localDocumentState === 'failed';
+  
+  // Estado del WebSocket para este documento
+  const wsStatus = getDocumentStatus(document.id);
+
+  // Inicializar el estado local con los valores del documento
+  useEffect(() => {
+    setLocalDocumentState(document.status);
+  }, [document.status]);
+
+  // Iniciar conexión WebSocket para documentos en procesamiento una sola vez
+  useEffect(() => {
+    // No intentar conectar si el documento ya está en estado final
+    if (isDocumentInFinalState) {
+      return;
+    }
+    
+    if ((document.status === 'processing' || document.status === 'uploaded') && 
+        !connectionAttempted) {
+      connectWebSocket(document);
+      setConnectionAttempted(true);
+    }
+  }, [document, connectWebSocket, connectionAttempted, isDocumentInFinalState]);
+
+  // Actualizar el estado local cuando recibimos actualizaciones del WebSocket
+  useEffect(() => {
+    if (wsStatus) {
+      // Actualizar el estado local con la información del WebSocket
+      if (wsStatus.status) {
+        setLocalDocumentState(wsStatus.status as DocumentStatus);
+      }
+      
+      if (wsStatus.progress_percentage !== undefined) {
+        setLocalProgressPercentage(wsStatus.progress_percentage);
+      }
+      
+      // Si recibimos un estado final desde el WebSocket, actualizar nuestro estado de conexión
+      if (wsStatus.status === 'processed' || wsStatus.status === 'failed' || wsStatus.progress_percentage === 100) {
+        setConnectionAttempted(false);
+        
+        // Actualizar explícitamente el estado local para mostrar como procesado
+        if (wsStatus.progress_percentage === 100) {
+          setLocalDocumentState('processed');
+        }
+        
+        // También actualizamos el documento en el contexto global para persistir el cambio
+        updateDocument(document.id, { status: wsStatus.status || 'processed' });
+      }
+    }
+  }, [wsStatus, document.id, updateDocument]);
 
   useEffect(() => {
     const fetchFolder = async () => {
@@ -66,16 +104,19 @@ export function DocumentCard({ document, hideNavigation = false, onFolderChange 
     setIsAssigningFolder(true);
   };
 
+  // Determinar el estado y progreso del documento
+  // Usar el estado local que se mantiene actualizado con los mensajes WebSocket
+  const displayStatus = localDocumentState;
+  const progressPercentage = isDocumentInFinalState ? 100 : localProgressPercentage;
+
   const content = (
     <>
       {/* Indicador de estado */}
       <div className="mb-3">
-        <span className={cn(
-          "px-2 py-1 rounded-md text-xs font-medium",
-          statusConfig[document.status].className
-        )}>
-          {statusConfig[document.status].label}
-        </span>
+        <StatusBadge 
+          status={displayStatus} 
+          percentage={progressPercentage}
+        />
       </div>
 
       <div className="flex items-start justify-between">
@@ -99,21 +140,21 @@ export function DocumentCard({ document, hideNavigation = false, onFolderChange 
   );
 
   return (
-    <div className="bg-card hover:bg-card/90 transition-colors rounded-lg p-4 border border-border h-[150px] flex flex-col">
+    <div className="bg-card hover:bg-card/90 transition-colors rounded-lg p-4 border border-border h-[170px] flex flex-col">
       {hideNavigation ? (
-        <div>{content}</div>
+        <div className="flex flex-col flex-1">{content}</div>
       ) : (
         <Link 
           to={`/document/${document.id}`}
           state={{ from: { type: 'documents', path: '/documents' } }}
-          className="block"
+          className="flex flex-col flex-1"
         >
           {content}
         </Link>
       )}
 
       {/* Área de carpeta */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-auto pt-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-auto h-8">
         <FolderIcon className="h-4 w-4 shrink-0" />
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {document.folder_id ? (
@@ -124,18 +165,13 @@ export function DocumentCard({ document, hideNavigation = false, onFolderChange 
             ) : currentFolder ? (
               <>
                 <span className="shrink-0">En</span>
-                {hideNavigation ? (
-                  <Link 
-                    to={`/folder/${document.folder_id}`}
-                    className="text-primary hover:underline truncate"
-                  >
-                    {currentFolder.name}
-                  </Link>
-                ) : (
-                  <span className="text-primary truncate">
-                    {currentFolder.name}
-                  </span>
-                )}
+                <Link 
+                  to={`/folder/${document.folder_id}`}
+                  className="text-primary hover:underline truncate"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {currentFolder.name}
+                </Link>
                 <button
                   onClick={handleFolderClick}
                   className="p-1 hover:bg-muted rounded-lg transition-colors shrink-0"
@@ -147,7 +183,7 @@ export function DocumentCard({ document, hideNavigation = false, onFolderChange 
           ) : (
             <button
               onClick={handleFolderClick}
-              className="text-primary hover:underline truncate py-1 mb-1.5"
+              className="text-primary hover:underline truncate"
             >
               Asignar a carpeta
             </button>
