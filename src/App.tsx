@@ -6,6 +6,7 @@ import { MeetingsProvider } from './context/MeetingsContext'
 import { ClipsProvider } from './context/ClipsContext'
 import { ActivityProvider } from './context/ActivityContext'
 import { DocumentsProvider } from './context/DocumentsContext'
+import { DocumentWebSocketProvider } from './context/DocumentWebSocketContext'
 import './App.css'
 
 function App() {
@@ -16,11 +17,13 @@ function App() {
           <AuthProvider>
             <MeetingsProvider>
               <DocumentsProvider>
-                <ClipsProvider>
-                  <ActivityProvider>
-                    <Router />
-                  </ActivityProvider>
-                </ClipsProvider>
+                <DocumentWebSocketProvider>
+                  <ClipsProvider>
+                    <ActivityProvider>
+                      <Router />
+                    </ActivityProvider>
+                  </ClipsProvider>
+                </DocumentWebSocketProvider>
               </DocumentsProvider>
             </MeetingsProvider>
           </AuthProvider>

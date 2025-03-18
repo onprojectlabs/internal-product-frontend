@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { FileText, Search as SearchIcon, Upload } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { FileText, Search as SearchIcon, Upload, RefreshCw } from 'lucide-react';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useDocuments } from '../../context/DocumentsContext';
+import { useDocumentWebSocket } from '../../context/DocumentWebSocketContext';
 import { DocumentCard } from '../../components/documents/DocumentCard';
-import { DocumentStatus } from '../../types/documents';
+import { DocumentStatus, Document } from '../../types/documents';
 import { Button } from '../../components/ui/Button';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -21,6 +22,8 @@ export function DocumentsPage() {
     filters,
     setFilters
   } = useDocuments();
+  
+  const { connectWebSocket, disconnectWebSocket } = useDocumentWebSocket();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -28,10 +31,11 @@ export function DocumentsPage() {
   const [selectedStatus, setSelectedStatus] = useState<DocumentStatus | ''>('');
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
+  // Usar un Set para rastrear qué documentos ya intentamos conectar
+  const attemptedConnections = useRef<Set<string>>(new Set());
 
   const allowedTypes = ['.pdf', '.doc', '.docx', '.txt'];
 
-  // Memoizar la función de actualización de filtros sin depender de filters
   const updateFilters = useCallback(() => {
     setFilters({
       limit: 100,
@@ -43,15 +47,13 @@ export function DocumentsPage() {
     });
   }, [selectedStatus, startDate, endDate, searchQuery, setFilters]);
 
-  // Efecto para la carga inicial de documentos
   useEffect(() => {
     setFilters({
       limit: 100,
       skip: 0
     });
-  }, []); // Solo se ejecuta al montar el componente
+  }, []);
 
-  // Efecto para actualizar los filtros con debounce para la búsqueda
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchQuery || selectedStatus || startDate || endDate) {
@@ -61,6 +63,16 @@ export function DocumentsPage() {
 
     return () => clearTimeout(timer);
   }, [searchQuery, selectedStatus, startDate, endDate, updateFilters]);
+
+  useEffect(() => {
+    documents.forEach(doc => {
+      if ((doc.status === 'processing' || doc.status === 'uploaded') && 
+          !attemptedConnections.current.has(doc.id)) {
+        connectWebSocket(doc);
+        attemptedConnections.current.add(doc.id);
+      }
+    });
+  }, [documents, connectWebSocket]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -74,7 +86,14 @@ export function DocumentsPage() {
       try {
         setUploadError(null);
         console.log('Intentando subir archivo:', file.name);
-        await documentsService.uploadDocument(file);
+        const uploadedDoc = await documentsService.uploadDocument(file);
+        
+        // Iniciar WebSocket para el documento recién subido (si aún no lo hemos intentado)
+        if (!attemptedConnections.current.has(uploadedDoc.id)) {
+          connectWebSocket(uploadedDoc);
+          attemptedConnections.current.add(uploadedDoc.id);
+        }
+        
         // Actualizar la lista de documentos después de subir
         updateFilters();
       } catch (error) {
@@ -96,17 +115,27 @@ export function DocumentsPage() {
     setSearchQuery('');
   };
 
+  const handleReconnect = (doc: Document) => {
+    disconnectWebSocket(doc.id);
+    setTimeout(() => {
+      connectWebSocket(doc);
+    }, 500); // Esperar 500ms para asegurar que la desconexión se complete
+  };
+
   return (
     <div className="container mx-auto p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">
+          <h1 className="text-2xl font-bold">
             Documentos
           </h1>
           <p className="text-muted-foreground">
             {total} documentos en total
           </p>
+        </div>
+        <div className="flex gap-2">
+          {/* Buttons for other actions can be added here if needed */}
         </div>
       </div>
 
@@ -263,8 +292,23 @@ export function DocumentsPage() {
       ) : documents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {documents.map(doc => (
-            <div key={doc.id}>
+            <div key={doc.id} className="relative">
               <DocumentCard document={doc} />
+              
+              {/* Botón de reconexión para el documento */}
+              {(doc.status === 'processing' || doc.status === 'uploaded') && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleReconnect(doc);
+                  }}
+                  className="absolute top-3 right-3 p-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-full"
+                  title="Forzar reconexión WebSocket"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
