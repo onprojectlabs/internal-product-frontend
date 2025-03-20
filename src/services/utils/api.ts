@@ -50,9 +50,23 @@ export const apiGet = async <T>(
         : "";
 
     const url = `${API_URL}${endpoint}${queryParams ? `?${queryParams}` : ""}`;
+    console.log(`[API] GET ${url}`);
 
-    const response = await fetch(url, defaultFetchOptions());
-    return handleResponse<T>(response);
+    try {
+        const response = await fetch(url, defaultFetchOptions());
+        console.log(`[API] Respuesta de ${url}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+        });
+
+        const result = await handleResponse<T>(response);
+        console.log(`[API] Datos recibidos de ${url}:`, result);
+        return result;
+    } catch (error) {
+        console.error(`[API] Error en GET ${url}:`, error);
+        throw error;
+    }
 };
 
 /**
@@ -136,7 +150,21 @@ export const handleResponse = async <T>(response: Response): Promise<T> => {
         return {} as T;
     }
 
-    return response.json();
+    try {
+        const contentType = response.headers.get("content-type");
+
+        if (contentType && contentType.includes("application/json")) {
+            const jsonData = await response.json();
+            console.log("[API] JSON recibido:", jsonData);
+            return jsonData as T;
+        } else {
+            console.warn("[API] La respuesta no es JSON:", contentType);
+            return {} as T;
+        }
+    } catch (error) {
+        console.error("[API] Error al procesar la respuesta:", error);
+        throw new Error("Error al procesar la respuesta del servidor");
+    }
 };
 
 /**

@@ -35,9 +35,12 @@ export function StatusBadge({ status, percentage, variant = "default", className
     className: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
   };
   
-  // Determinar si mostrar el porcentaje (solo para documentos en procesamiento)
-  const showPercentage = percentage !== undefined && percentage > 0 && 
-                          (status === 'processing' || status === 'uploaded');
+  // Determinar si mostrar el porcentaje (para cualquier documento que no esté en estado final)
+  const isInProgress = status === 'processing' || status === 'uploaded';
+  const showPercentage = percentage !== undefined && 
+                         percentage > 0 && 
+                         percentage < 100 && 
+                         isInProgress;
   
   // Clases base según la variante
   const baseClasses = {
@@ -61,7 +64,7 @@ export function StatusBadge({ status, percentage, variant = "default", className
       {showPercentage && (
         <span className={cn(
           baseClasses[variant],
-          "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+          "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
         )}>
           {percentage}%
         </span>
