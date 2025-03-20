@@ -1,28 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// Define the document processing status types
-export type DocumentStatus = "uploaded" | "processing" | "processed" | "failed";
-
-// Define the document processing status interface
-export interface DocumentProcessingStatus {
-    document_id: string;
-    status: DocumentStatus;
-    progress_percentage: number;
-    current_stage: string;
-    updated_at: string;
-    completed_at?: string;
-    processing_duration?: number;
-    error?: {
-        error_message: string;
-        error_type: string;
-        timestamp: string;
-    };
-}
+import {
+    DocumentProcessingMessage,
+    ProgressMessage,
+    DocumentTranslationMessage,
+} from "../../types/documents";
 
 interface UseDocumentProcessingStatusOptions {
-    onStatusChange?: (status: DocumentProcessingStatus) => void;
+    onStatusChange?: (status: ProgressMessage) => void;
+    onDocumentProcessing?: (status: DocumentProcessingMessage) => void;
+    onTranslationProcessing?: (status: DocumentTranslationMessage) => void;
     onError?: (error: Error) => void;
-    onComplete?: (status: DocumentProcessingStatus) => void;
+    onComplete?: (status: ProgressMessage) => void;
     autoReconnect?: boolean;
     reconnectInterval?: number;
 }
@@ -39,6 +27,8 @@ export function useDocumentProcessingStatus(
 ) {
     const {
         onStatusChange,
+        onDocumentProcessing,
+        onTranslationProcessing,
         onError,
         onComplete,
         autoReconnect = true,
@@ -46,7 +36,7 @@ export function useDocumentProcessingStatus(
     } = options;
 
     // State to track the current processing status
-    const [status, setStatus] = useState<DocumentProcessingStatus | null>(null);
+    const [status, setStatus] = useState<ProgressMessage | null>(null);
 
     // State to track connection status
     const [connectionStatus, setConnectionStatus] = useState<
@@ -120,33 +110,77 @@ export function useDocumentProcessingStatus(
                 console.log("WebSocket message received:", event.data);
 
                 try {
-                    const data = JSON.parse(
-                        event.data
-                    ) as DocumentProcessingStatus;
+                    const data = JSON.parse(event.data) as ProgressMessage;
                     setStatus(data);
 
                     // Call the onStatusChange callback if provided
                     if (onStatusChange) onStatusChange(data);
 
-                    // Handle completion
-                    if (data.status === "processed" && onComplete) {
-                        onComplete(data);
-
-                        // Close the connection if the document is processed
-                        if (wsRef.current) {
-                            wsRef.current.close();
-                            setConnectionStatus("disconnected");
-                        }
+                    // Route to specific handlers based on task_type
+                    if (
+                        data.task_type === "document_processing" &&
+                        onDocumentProcessing
+                    ) {
+                        onDocumentProcessing(data as DocumentProcessingMessage);
+                    } else if (
+                        data.task_type === "document_translation" &&
+                        onTranslationProcessing
+                    ) {
+                        onTranslationProcessing(
+                            data as DocumentTranslationMessage
+                        );
                     }
 
-                    // Handle error
-                    if (data.status === "failed" && onError && data.error) {
-                        onError(new Error(data.error.error_message));
+                    // Handle completion based on task type
+                    if (data.task_type === "document_processing") {
+                        const docData = data as DocumentProcessingMessage;
+                        if (docData.status === "processed" && onComplete) {
+                            onComplete(docData);
 
-                        // Close the connection if the document processing failed
-                        if (wsRef.current) {
-                            wsRef.current.close();
-                            setConnectionStatus("disconnected");
+                            // Close the connection if the document is processed
+                            if (wsRef.current) {
+                                wsRef.current.close();
+                                setConnectionStatus("disconnected");
+                            }
+                        }
+
+                        // Handle error for document processing
+                        if (
+                            docData.status === "failed" &&
+                            onError &&
+                            docData.error
+                        ) {
+                            onError(new Error(docData.error.error_message));
+
+                            // Close the connection if the document processing failed
+                            if (wsRef.current) {
+                                wsRef.current.close();
+                                setConnectionStatus("disconnected");
+                            }
+                        }
+                    } else if (data.task_type === "document_translation") {
+                        const translationData =
+                            data as DocumentTranslationMessage;
+                        if (
+                            translationData.status === "completed" &&
+                            onComplete
+                        ) {
+                            onComplete(translationData);
+                        }
+
+                        // Handle error for translation
+                        if (
+                            translationData.status === "failed" &&
+                            onError &&
+                            translationData.error
+                        ) {
+                            onError(new Error(translationData.error));
+
+                            // Close the connection if the translation failed
+                            if (wsRef.current) {
+                                wsRef.current.close();
+                                setConnectionStatus("disconnected");
+                            }
                         }
                     }
                 } catch (error) {
@@ -189,7 +223,13 @@ export function useDocumentProcessingStatus(
                 // Reconnect if autoReconnect is enabled and the document is still processing
                 if (
                     shouldReconnectRef.current &&
-                    status?.status === "processing"
+                    status &&
+                    ((status.task_type === "document_processing" &&
+                        (status as DocumentProcessingMessage).status ===
+                            "processing") ||
+                        (status.task_type === "document_translation" &&
+                            (status as DocumentTranslationMessage).status ===
+                                "translating"))
                 ) {
                     console.log(`Reconnecting in ${reconnectInterval}ms...`);
                     setTimeout(() => {

@@ -13,6 +13,7 @@ import { DocumentsPage } from './pages/documents/DocumentsPage';
 import { DocumentPage } from './pages/documents/DocumentPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 import { useAuth } from './context/AuthContext';
 
 function LoadingScreen() {
@@ -68,6 +69,7 @@ export function Router() {
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="document/:id" element={<DocumentPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Routes>
     </div>

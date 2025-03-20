@@ -1,40 +1,51 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Document } from '../types/documents';
-import { DocumentProcessingStatus } from '../hooks';
+import { Document, ProgressMessage, DocumentProcessingMessage, DocumentTranslationMessage } from '../types/documents';
 import { documentsService } from '../services/documents/documentsService';
 
 interface DocumentWebSocketContextProps {
   connectWebSocket: (document: Document) => void;
   disconnectWebSocket: (documentId: string) => void;
   disconnectAll: () => void;
-  getDocumentStatus: (documentId: string) => DocumentProcessingStatus | null;
+  getDocumentStatus: (documentId: string) => ProgressMessage | null;
   isConnected: (documentId: string) => boolean;
   getMessageCount: (documentId: string) => number;
   sendPing: (documentId: string) => void;
+  connectTranslationWebSocket: (document: Document) => void;
 }
 
 const DocumentWebSocketContext = createContext<DocumentWebSocketContextProps | undefined>(undefined);
 
 // Función auxiliar para determinar si el documento ha terminado de procesarse
-const isDocumentProcessingComplete = (status: DocumentProcessingStatus | null): boolean => {
+const isDocumentProcessingComplete = (status: ProgressMessage | null): boolean => {
   if (!status) return false;
-  return status.status === 'processed' || 
-         status.status === 'failed' || 
-         status.progress_percentage === 100;
+  
+  if (status.task_type === 'document_processing') {
+    const docStatus = status as DocumentProcessingMessage;
+    return docStatus.status === 'processed' || 
+           docStatus.status === 'failed' || 
+           docStatus.progress_percentage === 100;
+  } else if (status.task_type === 'document_translation') {
+    const transStatus = status as DocumentTranslationMessage;
+    return transStatus.status === 'completed' || 
+           transStatus.status === 'failed' || 
+           transStatus.progress_percentage === 100;
+  }
+  
+  return false;
 };
 
 interface WebSocketConnection {
   ws: WebSocket | null;
   documentId: string;
-  status: DocumentProcessingStatus | null;
+  status: ProgressMessage | null;
   retryCount: number;
-  retryTimer: number | null;
+  retryTimer: NodeJS.Timeout | null;
   hasError: boolean;
   lastErrorTime: number | null;
   messageCount: number;
   lastMessageTime: number | null;
-  pingInterval: number | null;
-  processingComplete: boolean; // Nuevo flag para rastrear si el procesamiento se ha completado
+  pingInterval: NodeJS.Timeout | null;
+  processingComplete: boolean;
 }
 
 interface DocumentWebSocketProviderProps {
@@ -92,20 +103,19 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
     }
   };
 
-  // Función para iniciar el envío periódico de pings
+  // Iniciar el intervalo de ping para una conexión
   const startPingInterval = (documentId: string) => {
-    const connection = activeConnections.current[documentId];
-    if (connection && connection.ws && connection.ws.readyState === WebSocket.OPEN) {
-      // Limpiar intervalo anterior si existe
-      clearPingInterval(documentId);
-      
-      // Crear nuevo intervalo
-      const intervalId = window.setInterval(() => {
-        sendPing(documentId);
-      }, PING_INTERVAL);
-      
-      // Guardar referencia al intervalo
-      activeConnections.current[documentId].pingInterval = intervalId;
+    // Limpiar cualquier intervalo existente
+    clearPingInterval(documentId);
+    
+    // Crear un nuevo intervalo para enviar pings periódicamente
+    const intervalId = setInterval(() => {
+      sendPing(documentId);
+    }, PING_INTERVAL);
+    
+    // Guardar referencia al intervalo
+    if (activeConnections.current[documentId]) {
+      activeConnections.current[documentId].pingInterval = intervalId as unknown as NodeJS.Timeout;
     }
   };
 
@@ -266,7 +276,7 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
             return;
           }
           
-          const data = JSON.parse(event.data) as DocumentProcessingStatus;
+          const data = JSON.parse(event.data) as ProgressMessage;
           
           // Actualizar el estado del documento en la conexión
           if (activeConnections.current[document.id]) {
@@ -276,14 +286,43 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
             connection.messageCount += 1;
             connection.lastMessageTime = Date.now();
             
-            console.log(`[${now.toISOString()}] Actualizado estado documento ${document.id}: ${data.status}, progreso: ${data.progress_percentage}%, etapa: ${data.current_stage}, mensaje #${connection.messageCount}`);
+            let statusMessage = '';
+            let isComplete = false;
+            let isFailed = false;
+            
+            // Procesar según tipo de mensaje
+            if (data.task_type === 'document_processing') {
+              const docData = data as DocumentProcessingMessage;
+              statusMessage = `${docData.status}, progreso: ${docData.progress_percentage}%, etapa: ${docData.current_stage}`;
+              isComplete = docData.status === 'processed' || docData.progress_percentage === 100;
+              isFailed = docData.status === 'failed';
+              
+              // Si es un mensaje de error, registrar información adicional
+              if (isFailed) {
+                console.warn(`[${now.toISOString()}] FALLO en procesamiento del documento ${document.id}: ${docData.current_stage}`);
+                console.warn(`[${now.toISOString()}] Detalles del error:`, docData.error || 'No hay detalles disponibles');
+              }
+            } else if (data.task_type === 'document_translation') {
+              const translationData = data as DocumentTranslationMessage;
+              statusMessage = `${translationData.status}, idioma: ${translationData.target_language}, progreso: ${translationData.progress_percentage}%, etapa: ${translationData.current_stage}`;
+              isComplete = translationData.status === 'completed' || translationData.progress_percentage === 100;
+              isFailed = translationData.status === 'failed';
+              
+              // Si es un mensaje de error, registrar información adicional
+              if (isFailed) {
+                console.warn(`[${now.toISOString()}] FALLO en traducción del documento ${document.id} a ${translationData.target_language}: ${translationData.current_stage}`);
+                console.warn(`[${now.toISOString()}] Detalles del error:`, translationData.error || 'No hay detalles disponibles');
+              }
+            }
+            
+            console.log(`[${now.toISOString()}] Actualizado estado documento ${document.id}: ${statusMessage}, mensaje #${connection.messageCount}`);
             
             // Forzar actualización de componentes que dependen de este estado
             triggerUpdate();
             
-            // Si el documento ya terminó (procesado o falló), cerrar la conexión
-            if (data.status === 'processed' || data.status === 'failed' || data.progress_percentage === 100) {
-              console.log(`[${now.toISOString()}] Documento ${document.id} ha terminado de procesarse (${data.status || 'progreso 100%'}). Cerrando WebSocket y actualizando mediante API.`);
+            // Si el documento ya terminó (procesado, fallido o completado el porcentaje), cerrar la conexión
+            if (isComplete || isFailed) {
+              console.log(`[${now.toISOString()}] Tarea para documento ${document.id} ha ${isFailed ? 'FALLADO' : 'terminado'}. Cerrando WebSocket y actualizando mediante API.`);
               
               // Marcar la conexión como procesamiento completo
               connection.processingComplete = true;
@@ -359,7 +398,7 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
             activeConnections.current[document.id].retryCount = retryCount;
             
             // Programar un reintento
-            const timerId = window.setTimeout(() => {
+            const timer = setTimeout(() => {
               // Solo reconectar si la conexión aún existe
               if (activeConnections.current[document.id]) {
                 // Crear un objeto Document con el id y status para reconectar
@@ -371,8 +410,8 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
               }
             }, retryDelay);
             
-            // Guardar el ID del temporizador
-            activeConnections.current[document.id].retryTimer = timerId;
+            // Guardar referencia al temporizador
+            activeConnections.current[document.id].retryTimer = timer as unknown as NodeJS.Timeout;
           } else if (connection.retryCount >= MAX_RETRIES) {
             console.log(`[${new Date().toISOString()}] Número máximo de reintentos (${MAX_RETRIES}) alcanzado para documento ${document.id}. No se intentará reconectar.`);
             // Mantener la información de conexión para mostrar el estado de error,
@@ -474,7 +513,7 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
   };
 
   // Obtener el estado actual de un documento
-  const getDocumentStatus = (documentId: string): DocumentProcessingStatus | null => {
+  const getDocumentStatus = (documentId: string): ProgressMessage | null => {
     return activeConnections.current[documentId]?.status || null;
   };
 
@@ -505,6 +544,266 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
     return () => clearInterval(intervalId);
   }, []);
 
+  // Conectar un WebSocket específicamente para traducciones
+  // Este método no verificará el estado del documento, solo se asegurará
+  // de establecer la conexión para monitorear traducciones
+  const connectTranslationWebSocket = (document: Document) => {
+    const documentId = document.id;
+    
+    // Verificar si ya existe una conexión activa o en proceso de reintento
+    const existingConnection = activeConnections.current[documentId];
+    if (existingConnection) {
+      // Si ya hay un WebSocket abierto o conectándose, no hacer nada
+      if (
+        existingConnection.ws && 
+        (existingConnection.ws.readyState === WebSocket.OPEN || 
+         existingConnection.ws.readyState === WebSocket.CONNECTING)
+      ) {
+        console.log(`[${new Date().toISOString()}] WebSocket ya conectado o conectándose para documento ${documentId}`);
+        return;
+      }
+      
+      // Si ha habido un error reciente, esperar el período de enfriamiento
+      if (existingConnection.hasError && existingConnection.lastErrorTime) {
+        const timeSinceError = Date.now() - existingConnection.lastErrorTime;
+        if (timeSinceError < ERROR_COOLDOWN_PERIOD) {
+          console.log(`[${new Date().toISOString()}] Esperando período de enfriamiento para documento ${documentId} (${Math.round((ERROR_COOLDOWN_PERIOD - timeSinceError) / 1000)}s restantes)`);
+          return;
+        }
+      }
+      
+      // Limpiar el temporizador de reintento existente
+      clearRetryTimer(documentId);
+      
+      // Limpiar el intervalo de ping existente
+      clearPingInterval(documentId);
+    }
+
+    // Obtener el token de autenticación
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('No hay token de autenticación disponible');
+      return;
+    }
+
+    try {
+      // Inicializar o actualizar el registro de conexión
+      if (!existingConnection) {
+        activeConnections.current[documentId] = {
+          ws: null,
+          documentId: documentId,
+          status: null,
+          retryCount: 0,
+          retryTimer: null,
+          hasError: false,
+          lastErrorTime: null,
+          messageCount: 0,
+          lastMessageTime: null,
+          pingInterval: null,
+          processingComplete: false
+        };
+      } else {
+        // Resetear el estado de error si estamos reconectando manualmente
+        activeConnections.current[documentId].hasError = false;
+      }
+
+      // Obtener la URL base de la API
+      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000';
+      
+      // Crear la URL del WebSocket según la documentación del backend
+      const wsUrl = `${apiBaseUrl.replace(/^http/, 'ws')}/api/v1/documents/ws/${documentId}?token=${token}`;
+      
+      console.log(`[${new Date().toISOString()}] Conectando WebSocket para traducciones del documento ${documentId}`);
+      
+      // Crear la conexión WebSocket
+      const ws = new WebSocket(wsUrl);
+      
+      // Actualizar la referencia en la conexión
+      activeConnections.current[documentId].ws = ws;
+
+      // Configurar los manejadores de eventos
+      ws.onopen = () => {
+        console.log(`[${new Date().toISOString()}] Conexión WebSocket establecida para traducciones del documento ${documentId}`);
+        
+        // Resetear el contador de reintentos al conectar exitosamente
+        if (activeConnections.current[documentId]) {
+          activeConnections.current[documentId].retryCount = 0;
+          activeConnections.current[documentId].hasError = false;
+          activeConnections.current[documentId].lastErrorTime = null;
+          
+          // Iniciar el envío periódico de pings
+          startPingInterval(documentId);
+          
+          // Enviar un ping inicial para solicitar el estado actual
+          sendPing(documentId);
+          
+          // Forzar actualización de componentes
+          triggerUpdate();
+        }
+      };
+
+      // Usar los mismos manejadores para onmessage, onerror y onclose
+      ws.onmessage = activeConnections.current[documentId].ws?.onmessage;
+      ws.onerror = activeConnections.current[documentId].ws?.onerror;
+      ws.onclose = activeConnections.current[documentId].ws?.onclose;
+      
+      // Si no se han asignado los manejadores, usar los mismos que en connectWebSocket
+      if (!ws.onmessage) {
+        ws.onmessage = (event) => {
+          try {
+            const now = new Date();
+            console.log(`[${now.toISOString()}] Mensaje recibido para documento ${documentId}:`, event.data);
+            
+            // Si es un mensaje de pong, no procesar como estado
+            if (event.data === '{"type":"pong"}') {
+              console.log(`[${now.toISOString()}] Recibido pong para documento ${documentId}`);
+              return;
+            }
+            
+            const data = JSON.parse(event.data) as ProgressMessage;
+            
+            // Actualizar el estado del documento en la conexión
+            if (activeConnections.current[documentId]) {
+              const connection = activeConnections.current[documentId];
+              
+              connection.status = data;
+              connection.messageCount += 1;
+              connection.lastMessageTime = Date.now();
+              
+              let statusMessage = '';
+              let isComplete = false;
+              let isFailed = false;
+              
+              // Procesar según tipo de mensaje
+              if (data.task_type === 'document_processing') {
+                const docData = data as DocumentProcessingMessage;
+                statusMessage = `${docData.status}, progreso: ${docData.progress_percentage}%, etapa: ${docData.current_stage}`;
+                isComplete = docData.status === 'processed' || docData.progress_percentage === 100;
+                isFailed = docData.status === 'failed';
+                
+                // Si es un mensaje de error, registrar información adicional
+                if (isFailed) {
+                  console.warn(`[${now.toISOString()}] FALLO en procesamiento del documento ${documentId}: ${docData.current_stage}`);
+                  console.warn(`[${now.toISOString()}] Detalles del error:`, docData.error || 'No hay detalles disponibles');
+                }
+              } else if (data.task_type === 'document_translation') {
+                const translationData = data as DocumentTranslationMessage;
+                statusMessage = `${translationData.status}, idioma: ${translationData.target_language}, progreso: ${translationData.progress_percentage}%, etapa: ${translationData.current_stage}`;
+                isComplete = translationData.status === 'completed' || translationData.progress_percentage === 100;
+                isFailed = translationData.status === 'failed';
+                
+                // Si es un mensaje de error, registrar información adicional
+                if (isFailed) {
+                  console.warn(`[${now.toISOString()}] FALLO en traducción del documento ${documentId} a ${translationData.target_language}: ${translationData.current_stage}`);
+                  console.warn(`[${now.toISOString()}] Detalles del error:`, translationData.error || 'No hay detalles disponibles');
+                }
+              }
+              
+              console.log(`[${now.toISOString()}] Actualizado estado documento ${documentId}: ${statusMessage}, mensaje #${connection.messageCount}`);
+              
+              // Forzar actualización de componentes que dependen de este estado
+              triggerUpdate();
+              
+              // Si el documento ya terminó (procesado, fallido o completado el porcentaje), cerrar la conexión
+              if (isComplete || isFailed) {
+                console.log(`[${now.toISOString()}] Tarea para documento ${documentId} ha ${isFailed ? 'FALLADO' : 'terminado'}. Cerrando WebSocket y actualizando mediante API.`);
+                
+                // Marcar la conexión como procesamiento completo
+                connection.processingComplete = true;
+                
+                // Cerrar la conexión WebSocket
+                disconnectWebSocket(documentId);
+                
+                // Actualizar el documento mediante API para tener el estado final
+                refreshDocumentFromAPI(documentId);
+              }
+            } else {
+              console.warn(`[${now.toISOString()}] Mensaje recibido pero no hay conexión activa para documento ${documentId}`);
+            }
+          } catch (error) {
+            console.error(`[${new Date().toISOString()}] Error al procesar mensaje WebSocket para documento ${documentId}:`, error, 'Mensaje raw:', event.data);
+          }
+        };
+      }
+      
+      if (!ws.onerror) {
+        ws.onerror = (error) => {
+          console.error(`[${new Date().toISOString()}] Error en la conexión WebSocket para documento ${documentId}:`, error);
+          
+          if (activeConnections.current[documentId]) {
+            activeConnections.current[documentId].hasError = true;
+            activeConnections.current[documentId].lastErrorTime = Date.now();
+            
+            // Limpiar el intervalo de ping en caso de error
+            clearPingInterval(documentId);
+            
+            // Forzar actualización de componentes
+            triggerUpdate();
+          }
+        };
+      }
+      
+      if (!ws.onclose) {
+        ws.onclose = (event) => {
+          console.log(`[${new Date().toISOString()}] Conexión WebSocket cerrada para documento ${documentId} con código: ${event.code}, razón: ${event.reason || 'No especificada'}`);
+          
+          // Limpiar el intervalo de ping cuando se cierra la conexión
+          clearPingInterval(documentId);
+          
+          // Verificar si debemos reintentar la conexión
+          if (
+            activeConnections.current[documentId] && 
+            !activeConnections.current[documentId].processingComplete && 
+            activeConnections.current[documentId].retryCount < MAX_RETRIES
+          ) {
+            // Incrementar el contador de reintentos
+            activeConnections.current[documentId].retryCount += 1;
+            
+            const retryDelay = Math.min(
+              INITIAL_RETRY_DELAY * Math.pow(2, activeConnections.current[documentId].retryCount),
+              MAX_RETRY_DELAY
+            );
+            
+            console.log(`[${new Date().toISOString()}] Reintentando conexión para documento ${documentId} en ${retryDelay / 1000}s (intento ${activeConnections.current[documentId].retryCount}/${MAX_RETRIES})`);
+            
+            // Programar el reintento
+            const timer = setTimeout(() => {
+              // Solo reintentar si la conexión aún existe
+              if (activeConnections.current[documentId]) {
+                connectTranslationWebSocket(document);
+              }
+            }, retryDelay);
+            
+            // Guardar referencia al temporizador
+            activeConnections.current[documentId].retryTimer = timer as unknown as NodeJS.Timeout;
+          } else if (activeConnections.current[documentId]) {
+            console.log(`[${new Date().toISOString()}] No se reintentará la conexión para documento ${documentId}`);
+            
+            // Si el procesamiento NO está completo y hemos agotado los reintentos, marcar con error
+            if (!activeConnections.current[documentId].processingComplete) {
+              activeConnections.current[documentId].hasError = true;
+              activeConnections.current[documentId].lastErrorTime = Date.now();
+            }
+          }
+          
+          // Forzar actualización de componentes
+          triggerUpdate();
+        };
+      }
+      
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Error al establecer conexión WebSocket para documento ${documentId}:`, error);
+      
+      if (activeConnections.current[documentId]) {
+        activeConnections.current[documentId].hasError = true;
+        activeConnections.current[documentId].lastErrorTime = Date.now();
+      }
+      
+      // Forzar actualización de componentes
+      triggerUpdate();
+    }
+  };
+
   const contextValue: DocumentWebSocketContextProps = {
     connectWebSocket,
     disconnectWebSocket,
@@ -512,7 +811,8 @@ export function DocumentWebSocketProvider({ children }: DocumentWebSocketProvide
     getDocumentStatus,
     isConnected,
     getMessageCount,
-    sendPing
+    sendPing,
+    connectTranslationWebSocket,
   };
 
   return (

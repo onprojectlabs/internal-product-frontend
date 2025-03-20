@@ -8,7 +8,8 @@ import {
     MoonIcon,
     Brain,
     FileText,
-    LogOut
+    LogOut,
+    UserIcon
 } from 'lucide-react';
 import { FileVideo } from 'lucide-react';
 import { FolderIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
@@ -16,7 +17,7 @@ import { ActivityLogModal } from '../components/activity/ActivityLogModal';
 import { useThemeContext } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 import { FloatingChat } from '../components/brain/FloatingChat';
 import { cn } from '../lib/utils';
 
@@ -143,6 +144,25 @@ export function MainLayout() {
                                     Registro de actividad
                                 </motion.span>
                             </button>
+
+                            <Link 
+                                to="/profile"
+                                className={cn(
+                                    "p-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors w-full",
+                                    !open ? "flex justify-center" : "flex items-center gap-2"
+                                )}
+                            >
+                                <UserIcon className="h-5 w-5 flex-shrink-0" />
+                                <motion.span
+                                    animate={{
+                                        display: open ? "inline-block" : "none",
+                                        opacity: open ? 1 : 0,
+                                    }}
+                                    className="text-sm whitespace-nowrap"
+                                >
+                                    Mi perfil
+                                </motion.span>
+                            </Link>
 
                             <button
                                 onClick={logout}
